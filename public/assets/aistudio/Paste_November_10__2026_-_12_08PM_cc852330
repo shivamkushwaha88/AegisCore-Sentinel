@@ -1,0 +1,890 @@
+AegisCore Sentinel — Cross-Platform Product & Implementation Plan
+Document type: Product strategy + technical implementation blueprint
+Platforms: Windows desktop (primary build target) + Android mobile (companion platform)
+Architecture direction: Native Windows client (C#/.NET) + native Android client (Kotlin/Jetpack Compose), shared data contracts and versioned rule definitions, separate platform collectors
+Product principle: Privacy-first security transparency with evidence-backed, user-controlled remediation
+Status: Cross-platform proposal — validate both operating-system capability matrices on the actual target devices before feature commitments
+1. Executive recommendation
+AegisCore Sentinel should be a cross-platform security transparency and audit product for Windows laptops and Android devices. Windows is the first implementation target because the laptop is the primary build and daily-use environment; Android is a first-class companion client, not an afterthought or a port that assumes Windows APIs exist on mobile.
+
+The product must use native security collectors on each operating system. Windows and Android have different security models, permission systems, process boundaries, and monitoring interfaces. A single generic scanner cannot accurately represent both. The app should share its user-facing concepts, evidence format, risk language, report format, and versioned rule definitions while keeping Windows and Android collection logic separate.
+Revised product promise
+Understand what is happening on your devices. See the evidence. Know what you can safely do about it.
+
+AegisCore is not a replacement for Microsoft Defender, Windows Security, Android's built-in security controls, or a commercial endpoint protection product. It is a privacy-first security auditor and transparency layer that helps users review software, permissions/capabilities, startup behaviour, system posture, selected files, and observable network metadata. It reports only what the platform allows it to verify.
+Product architecture decision
+- Windows client: Native desktop app, designed for the laptop experience. It audits installed software, startup entries, services, security-provider state, firewall posture, active connections, selected files, and Windows executable metadata where supported.
+- Android client: Native mobile app. It audits visible installed packages, requested/granted permissions, app metadata, supported device posture, user-selected APKs/files, and optional consent-based network metadata.
+- Shared product layer: Common finding/evidence/check-result schemas, severity and confidence vocabulary, versioned rule-pack format, report format, visual language, and (later) optional encrypted device pairing.
+- Separate platform layer: Windows APIs and Android APIs are queried independently. Each platform reports its own coverage, access requirements, unsupported checks, and limitations.
+Recommended delivery sequence
+1. Phase 0 — Cross-platform feasibility: Verify the proposed Windows and Android signals using small diagnostic prototypes on the actual laptop and Android device.
+2. Phase 1 — Windows Security Auditor MVP: Build the desktop product first, without a permanently elevated service or kernel driver.
+3. Phase 2 — Android Security Auditor: Build the mobile client with the Android-specific capability boundaries in this document.
+4. Phase 3 — Local Device Link: Add optional, encrypted, local-network pairing so the laptop and phone can exchange selected summaries without a mandatory cloud account.
+5. Phase 4 — Advanced monitoring: Add platform-specific opt-in monitoring only after independent design, battery/performance, privacy, and compatibility tests.
+6. Phase 5 — Developer Security Workspace: Add explicit integrations for developer tools and AI agents; do not imply that trust annotations enforce OS-level execution controls.
+Do not start by implementing a universal real-time antivirus, global filesystem scanner, or kernel-level blocking engine. First prove that each collector can return reliable evidence on real devices.
+2. Product positioning and intended users
+Primary users
+Windows laptop users who want to understand installed software, startup programs, services, active connections, security-provider/firewall posture, and suspicious changes without replacing their existing antivirus.
+
+Android users who want answers to questions such as:
+- Which apps have access to my camera, microphone, location, contacts, SMS, or accessibility features?
+- Which apps have more access than I expected?
+- What changed since my last audit?
+- Is this APK worth installing?
+- What can I safely do about a finding?
+Power users and developers on either platform who want to:
+- Review the security footprint of installed developer tools.
+- Inspect local APKs before installation.
+- Understand package identity, signing certificates, permissions, and exported components.
+- Keep a local record of accepted risks and security changes.
+Product differentiation
+AegisCore should not compete by claiming to detect everything. Its differentiator should be evidence quality and transparency:
+- Every finding shows the actual observation that triggered it.
+- Every finding distinguishes a confirmed fact from an inference.
+- Every scan shows what was inspected, skipped, unavailable, or blocked by the operating system or current access level.
+- Every remediation action says exactly what it will do and what the user must confirm.
+- Private data remains on the device by default.
+Non-goals for the standard consumer app
+The standard clients will not claim to:
+- Be a root-level antivirus or kernel-level intrusion detection system.
+- Inspect every app's private data or memory.
+- Enumerate every active socket or process on the device.
+- Detect every microphone, camera, or clipboard access in real time.
+- Detect zero-day malware reliably from generic behavioural patterns.
+- Block another app from executing commands or using its own permissions.
+- Automatically revoke another app's permissions, delete its private data, or force-stop it.
+- Prove that a device is completely secure or malware-free.
+These are explicit product boundaries, not temporary UI limitations to hide.
+3. Android platform feasibility: what the app can actually do
+The following matrix should guide product scope and acceptance criteria.
+Area	Standard-app feasibility	Revised implementation
+Installed-app inventory	Feasible, subject to package-visibility rules and Play policy	Use PackageManager; request broad package visibility only if it is essential to the security-audit core purpose and policy requirements are met.
+Requested and granted permissions	Feasible for visible packages	Show requested separately from granted. Explain that a permission declaration does not prove that the app is currently using that capability.
+App signing identity and metadata	Feasible for visible packages	Record package name, version, target SDK, installer/source metadata where available, and signing-certificate digest.
+Exported components	Static inspection is possible for visible packages, subject to API/version details	Flag risky combinations, not exported status alone. Show whether an exported component is protected by a permission.
+Accessibility and other powerful services	Partial, API-dependent	Inspect user-enabled services only where a supported public API exists. Otherwise provide a direct Settings link and mark the check as unavailable. Do not infer abuse from enablement alone.
+Other apps' private files	Not available to an ordinary app	Do not scan /data/data, other apps' private directories, or arbitrary system paths. Android 11+ explicitly blocks access to other apps' private directories for apps targeting Android 11+.
+User files and folders	Feasible with user selection	Use the Storage Access Framework. Scan only the files/directories the user selects and retain the granted URI permission only as needed.
+Installed APK inspection	Feasible to a limited, testable extent	Read package metadata/signing information exposed by Android. Do not assume every APK file path is readable. Provide a user-selected APK preflight workflow for deeper manifest inspection.
+Device/kernel posture	Partial	Use reliable public signals such as Android API level and security patch level. Treat root/debug/bootloader/SELinux checks as unavailable or heuristic unless a supported API produces a trustworthy result.
+Per-app network usage	Partial, not real-time	NetworkStatsManager can expose usage history in time buckets. Access to other apps' data requires the special usage-stat access path and user action in Settings; it is not a fine-grained socket monitor.
+Live network metadata	Possible through an optional VpnService design	Requires explicit system consent, clear start/stop controls, a visible active notification, and compatibility testing. Capture only what the VPN design can actually observe. Do not claim HTTPS payload inspection.
+Arbitrary socket enumeration	Not a dependable standard-app feature	Remove from the standard scanner. Do not use undocumented /proc access as a core product dependency.
+Shell/script execution by other apps	Not generally observable by a normal app	Require explicit integration from the tool being monitored, user-imported logs, or a separately provisioned managed-device environment.
+Kill/force-stop another app	Not available as a general consumer-app remediation	Android 14+ limits third-party killBackgroundProcesses() to the calling app's own processes. Use Settings and user-confirmed uninstall flows instead.
+Delete another app's private files	Not available	Only delete a user-selected file for which AegisCore has a valid URI permission, after a clear confirmation.
+Prevent another app from executing	Not available to the ordinary app	Trust Manager becomes a risk-annotation and review system, not an OS-enforced allowlist.
+
+
+Important platform findings
+- Android 11+ filters app visibility by default. Android documents QUERY_ALL_PACKAGES as a broad permission that may be appropriate for security and antivirus apps, but the app must still request the smallest necessary visibility and satisfy Google Play policy. Android package visibility · Google Play package visibility policy
+- Android 11+ restricts access to other apps' private directories. Android storage privacy changes
+- NetworkStatsManager reports usage history in time buckets. Access to other apps' usage requires PACKAGE_USAGE_STATS special access; these statistics are not suitable as a real-time socket monitor. NetworkStatsManager API
+- Android's VpnService flow requires a system consent step before the app can establish the VPN. The operating system makes the active VPN visible to the user. Android VPN guide · VpnService API
+- Android 14+ limits third-party apps' ability to kill other apps' background processes. ActivityManager API
+- Foreground-service starts and types are restricted by recent Android versions. A permanent background watcher must not be assumed to run freely. Foreground-service restrictions
+- The Android application sandbox isolates app processes and resources by UID. Android Application Sandbox
+3.1 Windows platform feasibility — desktop client
+Windows has richer user-mode visibility than an ordinary Android app in several areas, but it still does not give a normal desktop app unlimited or tamper-proof visibility. AegisCore should begin as a read-only, least-privilege desktop auditor. A small, separately launched elevated helper may be considered later for checks that genuinely require administrator rights; do not run the entire UI permanently as Administrator.
+Supported Windows scope and compatibility
+- Primary target: Supported Windows 11 builds, with the exact minimum build fixed after testing the user's laptop and packaging toolchain.
+- Windows 10: Treat as a compatibility mode only after checking edition, build, and Extended Security Updates status. Windows 10 Home/Pro support ended on October 14, 2025; eligible and enrolled consumer devices can receive Extended Security Updates through October 12, 2027; do not assume a device is enrolled. AegisCore must clearly flag unsupported or unpatched operating systems rather than quietly marking them healthy. Microsoft: Windows 10 support has ended
+- Avoid kernel drivers, boot-start components, and persistent elevated services in the first release.
+Audit area	Windows user-mode feasibility	Revised implementation and limitations
+Installed software	Partial but useful	Combine standard uninstall-registration inventory with MSIX/Appx package inventory. Use multiple sources and show source/coverage. Portable apps and poorly registered installers may be missed. Do not present any one registry, WMI, or package-manager source as a complete inventory. Get-AppxPackage inventories Appx/MSIX packages for a user profile; all-user queries require administrator privileges. Microsoft Learn: Get-AppxPackage
+App permissions/capabilities	Not equivalent to Android	Inspect declared capabilities for packaged apps where available. Traditional Win32 desktop apps do not use the same Windows privacy permission prompts and generally do not appear in per-app privacy lists. Do not show a fake universal camera/mic/location permission matrix for all .exe apps. Microsoft: Windows desktop apps and privacy
+Win32 camera/mic/location policy	Narrow, version-specific administrative feature	Windows 11 24H2+ documents policy controls for unpackaged Win32 app camera, microphone, and location access through administrative policy. Treat this as a later managed-device/policy integration, not a universal consumer telemetry API. Microsoft Learn: Manage desktop app privacy access
+Startup applications	Feasible for known mechanisms	Inspect Run/RunOnce registry keys, Startup folders, and supported startup-task sources. Report source, command, target, publisher/signature, and whether the target still exists. Do not assume this covers every persistence mechanism. Microsoft Learn: Run and RunOnce keys
+Services and scheduled tasks	Feasible with access-dependent detail	Inventory service names, binary paths, start mode, account, state, signer, and scheduled-task metadata where accessible. Some details require elevation. Do not label a service malicious merely because it is unfamiliar or automatic.
+Active TCP connections	Point-in-time visibility is feasible	Use supported Windows networking interfaces such as Get-NetTCPConnection/IP Helper to map TCP connections to owning process IDs. A snapshot can miss short-lived connections and is not a complete packet monitor. Microsoft Learn: Get-NetTCPConnection
+Continuous network events	Advanced, separate project	ETW and Windows Filtering Platform offer deeper system networking integration. WFP is a filtering platform with user- and kernel-mode components; enforcement and callout-driver work substantially raise complexity and risk. Do not ship a WFP callout or network-blocking driver in the MVP. Microsoft Learn: Windows Filtering Platform
+Microsoft Defender status	Read-only status integration is feasible	Query supported Defender status fields, e.g. through the documented Get-MpComputerStatus path where available. Show active/passive/disabled/unknown state accurately. Never disable Defender, change its settings, or present AegisCore as a replacement. Microsoft Learn: Microsoft Defender Antivirus in Windows
+Windows Firewall posture	Read-only inspection first	Show firewall profile status and selected rule metadata where APIs/permissions allow. Changing firewall configuration requires administrative rights; in the MVP, link to Windows Security or the firewall management UI rather than silently editing rules. Microsoft Learn: Windows Firewall tools
+File integrity	Feasible for selected/accessible paths	Let users select folders or files, calculate SHA-256, record a local baseline, and compare changes. Add a small set of carefully chosen startup locations only after access and false-positive testing. Do not claim full-disk or protected-system-file coverage.
+EXE/DLL preflight	Feasible for selected files	Inspect PE metadata, SHA-256, Authenticode signature status, signer certificate, version metadata, and embedded manifest where parsable. A valid signature identifies a signer and integrity chain; it does not prove that software is safe. No malware-clean verdict without a separately justified detection source.
+OS/security posture	Partial and access-dependent	Read OS edition/build, patch state where reliably available, Defender state, firewall profiles, UAC/security configuration, Secure Boot/TPM/BitLocker status only when a documented interface provides a trustworthy result. Every check must report access limitations and source.
+Process termination/quarantine	Technically possible in some cases, but risky	Keep destructive controls out of MVP. Prefer “Open file location,” “Open Windows Security,” “Open app settings,” and a guided user action. Any future terminate/block action needs explicit confirmation, safeguards for critical processes, and rollback/verification.
+
+
+Windows-specific product rules
+1. Do not present Windows permissions as if they were Android runtime permissions. Keep packaged-app capabilities, Win32 application behaviour, and OS-level privacy policy as different evidence types.
+2. Do not rely on a single installed-app source. Some software is portable or intentionally unregistered. Show inventory coverage and discovery source.
+3. Do not use broad admin access as the default. Start as a standard user. When a check requires elevation, explain exactly why and request UAC elevation for that bounded operation only.
+4. Do not compete with Microsoft Defender. Read its status and direct users to Windows Security for remediation. AegisCore should complement existing protection, not disable or replace it.
+5. Do not equate an open port or active connection with malicious activity. Show process identity, signer, path, local/remote endpoints, state, observation time, and evidence confidence.
+6. Do not claim continuous monitoring from periodic snapshots. Distinguish snapshot audits from ETW/WFP-based advanced monitoring.
+7. Do not silently change firewall rules, startup entries, services, registry values, or files. User approval is required, and destructive changes should remain out of MVP.
+Windows-specific high-value modules
+- Software Inventory: Win32 and MSIX/Appx inventory, publisher/signature, version, install/update metadata when available, and newly detected software.
+- Startup & Persistence Review: startup registry entries, Startup folders, services, and scheduled tasks; baseline changes and explain why each entry starts automatically.
+- Process & Connection Explorer: current process metadata and point-in-time TCP connections mapped to process IDs; show unknown/unavailable data honestly.
+- Security Posture: Windows build/patch freshness, Defender mode/status, firewall profile status, and selected platform security controls.
+- Executable Preflight: inspect user-selected EXE/DLL/MSI/MSIX/APK files without executing them.
+- Selected-Path Integrity: user-selected folder baselines and unexpected change reports.
+The Windows client should launch with Software Inventory, Startup & Persistence Review, Security Posture, Process & Connection snapshots, and History. Executable Preflight and selected-path integrity can follow after file parsing and baseline tests.
+4. Revised feature set
+4.1 Shared Security Dashboard — Release 1
+Replace the default “SECURE — 94/100” presentation with a truthful summary:
+- Assessment status: Complete / Partial / Needs attention.
+- High-priority findings: Count of evidence-backed findings.
+- Review coverage: Checks completed out of checks applicable to this device.
+- Last audit: Date and time.
+- Monitoring mode: Off / Scheduled audit / Android VPN monitor active / Windows advanced telemetry active (only if that later opt-in feature is shipped).
+- New changes: Software/packages, startup entries, security settings, or supported app metadata changed since the last successful snapshot, according to the platform collectors actually enabled.
+Example dashboard copy:
+Assessment: Review recommended
+3 items need attention · 82% of applicable checks completed
+Last full audit: Today, 10:42 AM
+Network monitoring: Off
+
+When no findings are returned, use:
+No high-priority findings were detected in the areas inspected.
+
+Never use “Your device is 100% safe,” “No leaks,” or “System clean and verified” unless the specific claim is actually proven by a supported check.
+4.2 Android App Risk Explorer — Release 1
+For each visible installed package, collect only supported metadata:
+- App label and package name.
+- Version name and version code.
+- Target SDK and relevant install/update metadata where available.
+- Installer/source attribution where available; do not treat the installer label alone as proof of safety.
+- Signing-certificate SHA-256 digest and signing lineage information where exposed.
+- Requested permissions.
+- Granted runtime permissions, clearly separated from requested permissions.
+- Exported activities, services, receivers, and providers where accessible.
+- Security-relevant manifest declarations and configuration flags where accessible.
+Permission presentation must have three separate concepts:
+1. Requested: The manifest declares that the app may ask for this permission.
+2. Granted: Android reports that this permission is currently granted, where applicable.
+3. Active use: Only report this when a supported public signal actually proves it. Otherwise say “Current use not observable by AegisCore.”
+Do not equate “requested” with “granted,” or “granted” with “currently recording.”
+
+Useful rules include:
+- Sensitive permission requested and granted without an obvious user-facing reason.
+- Multiple high-impact permissions combined in one app.
+- Old target SDK relative to a maintained, versioned policy threshold.
+- Exported component that is not protected where protection appears warranted.
+- A newly installed app from an unexpected source, described as a review prompt rather than a malware verdict.
+- Material changes in requested/granted permissions since the previous snapshot.
+- Signing identity changes, interpreted with signing lineage and legitimate certificate rotation in mind.
+An exported component is not automatically a vulnerability. The rule must consider its protection, intent filters, component type, and available evidence.
+4.2.1 Windows Software Explorer — Release 1
+For each discovered Windows application/package, preserve the discovery source and collect only fields actually available:
+- Display name, publisher, product/file version, package family/name for packaged apps, and installation source where available.
+- Executable path as supporting context, not a stable trust identity by itself.
+- Authenticode signer and signature status for supported binaries; distinguish unsigned, invalid, untrusted, expired, and unable-to-verify states.
+- Package capabilities from MSIX/Appx manifests where available.
+- Startup/service/task relationships discovered by separate collectors.
+- Last-seen and change history across audits.
+Do not invent Android-style runtime permission grants for ordinary Win32 applications. A Windows desktop executable may access data through application-specific mechanisms and user/session context that AegisCore cannot reduce to a universal “permission granted” list. Microsoft explicitly distinguishes traditional desktop apps from packaged Store apps in its Windows privacy documentation.
+
+Useful Windows review rules:
+- New software discovered since the previous baseline.
+- Executable or signer identity changed after an update.
+- Startup entry points to a missing file or an unexpected writable location.
+- A startup/service/task binary is unsigned or has a verification problem (review signal, not automatic malware verdict).
+- Packaged-app capability declarations exceed an understandable baseline, where the manifest exposes them.
+- A critical application is unexpectedly absent from inventory sources; show this as an inventory discrepancy, not proof of tampering.
+4.3 Android Device Security Posture — Release 1
+Implement a compact set of checks with reliable evidence:
+- Android release/API level.
+- User-visible Android security patch level (Build.VERSION.SECURITY_PATCH).
+- Secure lock-screen state where a supported API provides it.
+- Device encryption/security settings only where a public API provides a reliable value.
+- Developer/ADB state only if the value can be read reliably on the relevant platform version; otherwise report “Not observable.”
+- Root indicators only as signals, never as a definitive root verdict.
+- Bootloader and SELinux posture only when verified through a supported public interface. Do not shell out to hidden APIs or parse undocumented system files as a core feature.
+Use separate statuses:
+- PASS — a supported check completed and met its rule.
+- REVIEW — a supported check returned a concerning result.
+- NOT_OBSERVABLE — Android does not expose a reliable signal to this app.
+- NEEDS_USER_ACCESS — a user-granted special access is required.
+- ERROR — the check failed unexpectedly.
+A missing data point must never become a green check.
+4.3.1 Windows Security Posture — Release 1
+Start with read-only checks, each with source, timestamp, access requirement, and PASS / REVIEW / NOT_OBSERVABLE / NEEDS_ELEVATION / ERROR status:
+- Windows edition, version, build, architecture, and servicing/support state.
+- Microsoft Defender Antivirus mode and selected protection-state fields from a supported interface.
+- Windows Firewall profile status (Domain / Private / Public where available).
+- OS update/patch freshness only where a reliable local source can establish the installed build and update state.
+- Secure Boot, TPM readiness, BitLocker protection, virtualization-based security, and memory-integrity posture only after Phase 0 proves a documented, reliable interface on the supported Windows builds.
+- UAC and other relevant system configuration only where the value can be interpreted accurately and is not policy-overridden.
+Do not call the machine “secure” because these checks pass. A missing or inaccessible check remains visible in coverage. Never change Defender, firewall, BitLocker, Secure Boot, TPM, or UAC settings from the MVP.
+4.4 Cross-platform APK Preflight — Release 1.1 (high-value feature)
+APK inspection should be useful both when the user downloads an APK on the Windows laptop and when they select an APK on the Android device.
+1. Windows: user selects an APK through the desktop file picker. Android: user selects an APK through the system file picker.
+2. AegisCore parses package metadata and the binary Android manifest without executing the APK.
+3. Show package name, app label, version, target SDK, signing-certificate identity and verification result where the parser can validate it, requested permissions, exported components, relevant manifest flags, and SHA-256 file hash.
+4. Explain high-impact permissions and manifest findings in ordinary language.
+5. Offer local report export. On Android, offer the OS-supported install flow only as a separate explicit user action; never silently install.
+Use a maintained APK parser and signing-verification implementation with a security/update policy. Do not implement APK v1/v2/v3 signature verification from scratch as an incidental feature. Bound ZIP entry count, expanded size, compression ratio, file size, CPU time, and memory; do not blindly extract untrusted entries.
+
+Label results as manifest/configuration and signature review, not a malware verdict. A valid signature verifies a signer identity and covered file integrity under the applicable signature scheme; it does not prove an APK is harmless. Without a reputable detection source or a properly designed analysis environment, AegisCore cannot claim an APK is clean.
+4.5 User-Selected File Inspector — Release 1.1
+Use the platform's native file-selection experience:
+- Windows: standard file/folder picker, bounded read access, and explicit handling of access-denied paths and reparse points.
+- Android: Storage Access Framework with scoped URI access and revocation handling.
+Support only formats with maintained, bounded parsers: APK, selected Windows executable/package formats, scripts/text, archives, and common documents for basic metadata. Calculate hashes and inspect metadata locally. Do not execute files or scripts. Avoid storing raw file contents; persist only the minimum evidence needed. For archives, enforce size/ratio/time/path limits and never perform an uncontrolled extraction.
+
+For deletion or moving, act only on a user-selected target and explain the irreversible effect before confirmation. Do not market this as a full-disk or full-device filesystem scanner.
+4.6 Network Visibility — staged, platform-specific
+Network visibility must distinguish a snapshot, historical usage, and continuous telemetry. They are not interchangeable.
+
+A. Windows connection snapshots — Phase 1
+- Collect point-in-time TCP connection metadata using supported Windows interfaces.
+- Map owning PID to process name, signer, path, and start-time context where accessible; handle PID reuse and inaccessible metadata.
+- Show protocol, local/remote endpoint, connection state, process identity, and observation timestamp.
+- Do not infer data theft from an unfamiliar remote IP, an open port, or a high connection count alone.
+- A snapshot misses short-lived connections and is not a packet capture or continuous monitor.
+B. Windows advanced telemetry — Phase 4 or later
+- Evaluate ETW for event-driven telemetry only after measuring event loss, overhead, privacy impact, and OS-version differences.
+- Evaluate Windows Filtering Platform only with a separate threat model and security review. WFP enforcement/callout-driver work is not an MVP feature.
+- No TLS interception, certificate injection, payload capture, silent firewall edits, or kernel driver in the initial release.
+C. Android network usage — optional
+- Use NetworkStatsManager only where available and after the user grants the required usage-stat access.
+- Show per-app data consumption over time buckets returned by Android. Label this historical/bucketed, not live.
+- High data usage is not proof of exfiltration.
+D. Android local VPN monitor — Phase 4 or later
+- Build as a separate opt-in feature using VpnService.
+- Explain observed metadata before the Android system VPN consent dialog.
+- Provide clear start/stop controls and a truthful persistent active notification.
+- Do not route traffic to a remote server by default, decrypt HTTPS, or collect passwords/messages/payloads.
+- Start with flow timing, protocol, byte counts, and DNS metadata only where reliably observable.
+- Test battery impact, IPv4/IPv6, DNS, captive portals, private DNS, OEM behaviour, and conflicts with other VPNs.
+If a monitor is not active, the UI must not say “Real-time Sentinel Active.”
+4.7 Behavioural Signals — Release 2 or later
+Replace generic “zero-day anomaly detection” with a deterministic, evidence-based signal engine.
+
+Examples of defensible signals:
+- Windows: a new startup entry, service, scheduled task, or executable identity appears compared with the previous snapshot.
+- Windows: a startup target disappears, changes signer/hash, or resolves to an unexpected path; report the evidence and benign explanations.
+- Windows: a process-linked connection snapshot changes, but only raise a review finding when additional context supports it.
+- Android: a new app requests a materially different set of permissions from its previous snapshot.
+- A package's signing identity changes in a way not explained by verified signing lineage.
+- User-enabled high-impact services change, where supported APIs expose the change.
+- A local VPN observes a documented network pattern that matches a versioned heuristic.
+- A user imports an execution log from a supported development tool integration.
+Do not claim to detect:
+- Clipboard snooping by arbitrary third-party apps without a supported observable event.
+- Stealth microphone/camera recording merely because the app has permission.
+- Arbitrary shell commands executed inside other app sandboxes.
+- Unknown zero-day malware from a handful of generic network or permission heuristics.
+Every heuristic must include a rule ID, version, input evidence, confidence, and a plain-language limitation statement.
+4.8 Trust Manager → Trust Profiles & Exceptions
+Keep the Trust Manager concept, but redefine what it does.
+
+It is a transparent risk-acceptance and review tool, not an operating-system allowlist.
+
+For each trusted/exception entry, store:
+- Android: exact package identifier and signing-certificate fingerprint. Windows: exact file hash and signer identity; package family identity may be used for packaged apps where suitable. A path or display name alone is insufficient.
+- The specific finding/rule being accepted.
+- A user-provided reason or note.
+- Creation date and optional expiry date.
+- A reminder to review after app updates or identity changes.
+Rules:
+- Never trust an app based only on display name or a mutable file path.
+- Never suppress unrelated findings from the same app.
+- Show that an exception does not change Android permissions, Windows process behaviour, firewall policy, or OS-level enforcement.
+- Make expiry and revocation easy.
+- Maintain the original finding and evidence even when the user accepts the risk.
+For developer tools such as terminal environments, IDEs, shells, and AI coding assistants, show their observed package/file identity, signer, capability footprint, and user annotations. To monitor their internal commands, require an explicit integration that emits events; do not promise global process monitoring.
+4.9 Security Timeline & Reports — Release 1
+- Searchable local history of scans, findings, user decisions, remediation attempts, and observed app changes.
+- Show whether each action was user-confirmed, automatically observed, or inferred.
+- Export a sanitized JSON or text report through the Windows Save dialog or Android share/save flow.
+- Explain that exported reports can contain sensitive software inventory, paths, or connection metadata and should be shared carefully.
+- Provide delete-all-history and per-finding deletion controls.
+5. Risk model: trustworthy before impressive
+Do not launch with an unexplained 0–100 score
+The original security score can create false confidence. A score such as 94/100 is meaningless unless users can understand the inputs, the coverage, the weighting, and the blind spots.
+
+For the first release, use:
+- Finding severity: Critical / High / Moderate / Low / Informational.
+- Evidence confidence: Confirmed / Strong indicator / Weak indicator.
+- Assessment coverage: Completed applicable checks divided by applicable checks that could be evaluated.
+- Data freshness: When the observation was last collected.
+A user should be able to see both risk and coverage. A device with no findings but only 20% coverage must not look safer than a device with 95% coverage.
+Finding structure
+Every finding should answer:
+1. What did AegisCore observe?
+2. Which app, file, or device setting is affected?
+3. Why might this matter?
+4. How strong is the evidence?
+5. What could not be checked?
+6. What is the safest next action?
+7. How will AegisCore verify the result?
+Severity guidance
+- Critical: A confirmed, highly consequential exposure with direct supporting evidence. Use sparingly.
+- High: Strong evidence of a materially risky configuration or exposure.
+- Moderate: A meaningful risk requiring review, but with context or limited evidence.
+- Low: Hygiene recommendation or low-impact concern.
+- Informational: A capability or configuration worth understanding, not a vulnerability by itself.
+Do not assign Safe as a finding severity. A clean check is a check result, not a vulnerability finding.
+Confidence guidance
+- CONFIRMED: Directly reported by a supported Windows/Android API or verified file inspection.
+- STRONG_INDICATOR: Multiple reliable facts support the concern, but it is not proof of exploitation.
+- WEAK_INDICATOR: A heuristic that may have benign explanations.
+- INSUFFICIENT_DATA: Not enough evidence to reach a conclusion; normally this should be a check status, not an alert.
+6. Shared UX principles and platform-specific navigation
+The product should feel like one AegisCore family, not one identical layout forced onto two devices. Share colour, terminology, finding structure, status language, and evidence presentation. Tailor navigation and density to each platform.
+Windows desktop navigation
+1. Overview — laptop assessment, coverage, priority findings, last audit, Defender/firewall posture.
+2. Software — installed Win32 and Appx/MSIX software, publisher/signature, versions, changes.
+3. Startup & Services — startup entries, services, scheduled tasks, and change history.
+4. Connections — point-in-time process-linked TCP connections and evidence details.
+5. Inspect — selected EXE/DLL/MSI/MSIX/APK inspection and selected-path integrity.
+6. Trust — scoped risk annotations, exceptions, expiry, and review reminders.
+7. History — scans, changes, findings, actions, and exports.
+Android mobile navigation
+1. Overview — device assessment, coverage, priority findings, last audit.
+2. Apps — visible installed-app list, permissions, components, and app detail pages.
+3. Inspect — selected APK and user-selected file inspection.
+4. Network — historical usage and optional VPN monitor; unavailable/disabled state shown clearly.
+5. Trust — scoped risk annotations, exceptions, expiry, and review reminders.
+6. History — scans, changes, findings, actions, and exports.
+First-launch onboarding
+1. Explain that AegisCore is a security auditor/transparency companion, not a replacement for Windows Security, Microsoft Defender, or Android's built-in protections.
+2. Explain local processing and exactly what is stored.
+3. Windows: launch as a standard user; explain that certain optional checks may need a bounded UAC approval.
+4. Android: request only permissions/access necessary for the first audit; explain package visibility and any special access.
+5. Offer advanced access only when the user opens the feature that needs it.
+6. Show a short platform-specific “What AegisCore cannot inspect” page.
+Do not request every possible permission, run as Administrator by default, or ask the user to disable existing security software during onboarding.
+Finding card/detail layout
+- Severity and evidence confidence.
+- App/file/process/device target with a source identifier.
+- One-line observation and timestamp.
+- “Why this matters” explanation.
+- Exact evidence and data source.
+- Coverage or platform limitation.
+- Recommended action with the expected effect.
+- Action status and a later verification result.
+Remediation wording
+Prefer:
+- Windows: “Open Windows Security,” “Review this startup entry,” “Open file location,” or “Open firewall settings.”
+- Android: “Open Android app settings,” “Review permission in Settings,” or “Start Android's uninstall confirmation flow.”
+- Both: “Inspect this selected file,” “Export this finding,” and “Re-scan to verify the result.”
+Do not promise automatic permission revocation, process blocking, quarantine, or deletion unless a specific platform API and user-confirmed flow actually support it. No silent changes to firewall rules, services, startup entries, registry values, app permissions, or files.
+Visual design
+Keep the premium dark security aesthetic from the original plan, but reduce alarming neon and animation. Suggested palette:
+- Background: #0B0F19
+- Elevated surface: #131B2E
+- Border: #263247
+- Complete/healthy check: #10B981
+- Review: #F59E0B
+- High severity: #EF4444
+- Developer/trust: #6366F1
+Use colour as a status aid, not a substitute for words. Support keyboard navigation and screen readers on Windows, dynamic text size and screen readers on Android, strong contrast, and reduced motion. Use monospace typography only for package identifiers, paths, process IDs, hashes, and technical evidence.
+6.1 Cross-platform product behaviour
+The same product concepts must appear on Windows and Android, but the actual checks shown under them must be platform-specific.
+Shared concept	Windows implementation	Android implementation
+Device overview	OS posture, Defender/firewall status, software/startup changes, connection snapshot coverage	OS posture, package/permission changes, supported special-access coverage
+Software explorer	Win32 + Appx/MSIX inventory, publisher and executable identity	Visible installed packages, app metadata, requested/granted permissions, signing identity
+Inspect before install	Selected EXE/DLL/MSI/MSIX and APK metadata; supported archive metadata	Selected APK metadata, manifest, permissions, signing identity
+File integrity	Selected files/folders and approved baseline locations	User-selected SAF files/folders
+Network	TCP process-connection snapshots initially; optional ETW/WFP research later	Historical usage stats; optional user-approved VpnService later
+Trust	Scoped notes/exceptions keyed to file hash, signer, package identity, and rule	Scoped notes/exceptions keyed to package/signing identity and rule
+History and reports	Local scan history and sanitized JSON/text export	Local scan history and sanitized JSON/text export
+
+
+The app must never show a cross-platform feature as “supported” merely because it exists on the other platform. For example, Android's requested/granted runtime-permission model must not be copied onto ordinary Win32 software; Windows TCP connection snapshots must not be described as equivalent to an Android VPN monitor.
+6.2 Optional paired-device experience — later phase
+AegisCore can eventually provide a “My Devices” view showing both the Windows laptop and Android phone after the user explicitly pairs them.
+
+Requirements:
+- Pair locally with a one-time QR code or equivalent authenticated device-key exchange.
+- Use end-to-end authenticated encryption for device-to-device transfer.
+- No mandatory account, public cloud, analytics endpoint, or remote command channel.
+- Sync only user-selected summaries by default; never sync raw file contents, network payloads, full process command lines, or complete application inventories without a clear opt-in.
+- Show each device's last successful report time and coverage independently.
+- Let the user revoke a paired device and erase pairing keys locally.
+- Do not allow remote remediation or arbitrary command execution from the other device.
+Start with manual export/import of signed report files if that achieves the user value with less complexity. Add live local pairing only after both native clients are stable.
+7. Cross-platform technical architecture
+Recommended architecture: native collectors, shared contracts
+Do not force the same UI framework or native system collector onto both operating systems. The most reliable first architecture is:
+- Windows desktop: C#/.NET application with a native Windows UI (WinUI 3 for a Windows 11-focused product; WPF is a practical alternative if broader legacy compatibility is required). Use documented Windows APIs and narrowly scoped adapters.
+- Android mobile: Kotlin + Jetpack Compose, Android public APIs, Room, WorkManager only for deferrable work, and optional VpnService in a later release.
+- Shared product contracts: Versioned JSON schemas for ScanRun, CheckResult, EvidenceRecord, Finding, TrustException, report export, and rule-pack definitions. Use shared test fixtures to keep rule semantics consistent.
+- Separate platform collectors: Native Windows and Android collectors return evidence in the common schema. Each collector owns its OS/API checks and limitation messages.
+- Local storage: SQLite on each device. Android uses Room; Windows uses a maintained SQLite provider such as Microsoft.Data.Sqlite. Keep separate local databases; do not build cloud sync into the first release.
+This design shares the product logic that should be shared without pretending the operating systems expose the same capabilities. Do not add Kotlin Multiplatform UI, Rust FFI, a backend, or a Windows kernel driver just to achieve “one codebase.” Revisit a shared native core only when duplicate tested logic becomes a real maintenance problem.
+System architecture diagram
+                    AEGISCORE SENTINEL PRODUCT
+          Shared UX language · rule schema · evidence schema
+                      report format · docs
+                              |
+              +---------------+----------------+
+              |                                |
+       WINDOWS DESKTOP                    ANDROID MOBILE
+       C# / .NET UI                        Kotlin / Compose UI
+              |                                |
+       Windows ViewModels                 Android ViewModels
+       + Scan Orchestrator                 + Scan Orchestrator
+              |                                |
+       Windows Capability Registry        Android Capability Registry
+              |                                |
+       Windows Native Collectors           Android Native Collectors
+       - software inventory                - PackageManager
+       - startup/tasks/services             - permissions/components
+       - Defender/firewall posture          - device posture
+       - TCP connection snapshots           - SAF / APK inspection
+       - selected-file inspection           - optional usage/VPN
+              |                                |
+       Common evidence/finding contracts   Common evidence/finding contracts
+              |                                |
+       Local SQLite DB                     Local Room DB
+              |                                |
+       Local export / optional pair         Local export / optional pair
+Shared domain contracts
+Keep platform-specific source data, but normalize the outer structure:
+- platform: WINDOWS or ANDROID.
+- deviceLocalId: random local identifier, not a hardware serial or advertising ID.
+- collectorId and collectorVersion.
+- ruleSetId and ruleSetVersion.
+- checkId, checkStatus, observedAt, and sourceApi.
+- evidenceType, subjectType, subjectIdentifier, confidence, and limitations.
+- findingId, severity, confidence, recommendedAction, and lifecycle status.
+A rule may have separate platform-specific implementations, or be marked WINDOWS_ONLY / ANDROID_ONLY. Do not run the same rule over two dissimilar data models just because the labels look alike.
+Windows implementation layers
+Windows Desktop UI (WinUI 3 or WPF)
+    Overview / Software / Startup / Connections / Inspect / Trust / History
+                    |
+Windows ViewModels + application services
+                    |
+Scan Orchestrator + Windows Capability Registry
+                    |
+Windows collectors
+    SoftwareInventoryCollector
+    StartupEntryCollector
+    ServiceAndTaskCollector
+    DefenderStatusCollector
+    FirewallPostureCollector
+    TcpConnectionSnapshotCollector
+    FileIntegrityCollector
+    ExecutablePreflightCollector
+    OsPostureCollector
+                    |
+Evidence Builder + Versioned Rule Evaluator
+                    |
+Repositories + SQLite
+Windows engineering rules:
+- Run the UI as a standard user by default.
+- Never elevate silently. Use UAC only for a specific operation that requires it, and keep the elevated helper small, signed, and read-only in the first release.
+- Do not create a persistent Windows service at MVP launch.
+- Do not install a kernel driver or WFP callout driver in the MVP.
+- Treat PowerShell output as structured input only if commands are signed/controlled, arguments are fixed, output is parsed defensively, and failures are surfaced. Prefer direct supported APIs for long-term production collectors where practical.
+- Never build a shell command by concatenating untrusted file paths or process metadata.
+- Apply timeouts, bounded output, cancellation, and least-privilege access to all collectors.
+- Verify executable signatures and file hashes without executing the selected file.
+- Do not change firewall, Defender, services, startup items, registry values, or system files without an explicit, separately reviewed user action.
+Suggested Windows solution layout:
+AegisCore.Windows.sln
+  AegisCore.Windows.App/             # UI, navigation, packaging
+  AegisCore.Windows.Application/     # use cases and scan orchestration
+  AegisCore.Windows.Domain/          # shared-shaped models and rules
+  AegisCore.Windows.Infrastructure/  # SQLite, Windows API adapters
+  AegisCore.Windows.Collectors/      # inventory, startup, network, posture
+  AegisCore.Contracts/               # JSON schema/versioning
+  AegisCore.Tests/                   # unit, integration, fixtures
+Android implementation layers
+The original Android-specific architecture remains appropriate, with capability-aware collectors:
+Jetpack Compose UI
+    Overview / Apps / Inspect / Network / Trust / History
+                    |
+ViewModels + UI State
+                    |
+Use Cases / Scan Orchestrator
+                    |
+Android Platform Capability Registry
+                    |
+Android collectors
+    PackageCollector
+    PermissionCollector
+    ComponentCollector
+    DevicePostureCollector
+    UserSelectedFileCollector
+    NetworkStatsCollector (optional)
+    VpnMetadataCollector (optional)
+                    |
+Rule Engine + Evidence Builder
+                    |
+Repositories + Room Database
+Android package structure may follow the existing proposal:
+com.aegiscore.sentinel
+  app/
+  core/model/
+  core/database/
+  core/rules/
+  core/privacy/
+  core/capability/
+  data/repository/
+  platform/packages/
+  platform/permissions/
+  platform/deviceposture/
+  platform/storage/
+  platform/networkstats/
+  platform/vpn/
+  feature/overview/
+  feature/apps/
+  feature/inspect/
+  feature/network/
+  feature/trust/
+  feature/history/
+  worker/
+UI and product consistency
+Use the same concepts and design language across both clients, but adapt the information architecture to screen size:
+- Windows: dense desktop tables, multi-column details, searchable inventory, process/connection views, and export tools.
+- Android: concise cards, permission-focused detail pages, user-selected file flows, and explicit special-access onboarding.
+- Both: clear severity, evidence confidence, coverage, freshness, scan status, limitations, and remediation state.
+Do not add a cloud account or remote dashboard to make the apps appear integrated. A local-only design is a product strength.
+8. Cross-platform local data model
+The original entities are too small for evidence traceability and capability coverage. Use the same conceptual schema on both platforms, implemented with Room on Android and SQLite on Windows. Add platform-specific detail tables only where needed; keep export contracts versioned.
+ScanRun
+- id: UUID/String primary key.
+- startedAt, completedAt.
+- scanType: Quick / Full / APK / File / Network.
+- platform: Windows / Android.
+- osVersion, osBuild, securityPatch (Android only), and other non-sensitive device metadata needed for reproducibility.
+- ruleSetVersion.
+- status: Running / Completed / Partial / Cancelled / Failed.
+- applicableChecks, completedChecks, unavailableChecks, failedChecks.
+CheckResult
+- id.
+- scanRunId.
+- checkId and checkVersion.
+- status: Pass / Review / NotObservable / NeedsUserAccess / NeedsElevation / NotApplicable / Error.
+- summary.
+- observedAt.
+- limitationCode or explanation.
+AppSnapshot
+- id.
+- scanRunId.
+- platform.
+- packageName (Android) or applicationIdentity / installSource (Windows).
+- displayName.
+- versionName / versionCode / targetSdk for Android where available; product/file version for Windows where available.
+- publisher and installSource (nullable and explicitly labelled as attribution, not trust proof).
+- signingCertificateSha256 or platform-appropriate signer identity and signing-chain metadata where available.
+- firstInstallTime, lastUpdateTime, or installation/update metadata where available.
+- observedAt.
+CapabilityFact
+- id.
+- appSnapshotId.
+- factType: AndroidPermission / AndroidSpecialAccess / WindowsPackagedCapability / WindowsAdministrativePolicy / OtherPlatformFact.
+- capabilityOrPermission.
+- declaredOrRequested: True / False / Unknown / NotApplicable.
+- effectiveState: Granted / Denied / NotConfigured / Unknown / NotApplicable.
+- observationSource.
+- observedAt.
+- Keep Android permission semantics separate from Windows Win32 application behaviour.
+EvidenceRecord
+- id.
+- scanRunId.
+- subjectType and subjectId.
+- sourceApi or inspectionMethod.
+- observationCode.
+- sanitizedValue (avoid raw sensitive content).
+- observedAt.
+- confidence.
+- limitations.
+Finding
+- id.
+- ruleId, ruleVersion.
+- scanRunId.
+- targetType, targetId.
+- title, summary, whyItMatters.
+- severity and confidence.
+- recommendedAction.
+- status: New / Acknowledged / ActionPending / FixedUnverified / Resolved / Dismissed / Reopened.
+- firstSeenAt, lastSeenAt, resolvedAt.
+TrustException
+- id.
+- platform.
+- targetType: AndroidPackage / WindowsFile / WindowsPackagedApp.
+- packageName (Android) or fileSha256 + signer fingerprint (Windows), as applicable.
+- ruleId (required; avoid app-wide blanket suppression).
+- reason.
+- createdAt, expiresAt.
+- enabled.
+- lastReviewedAt.
+A path or display name alone must never be the trust identity. Add a database-level comment/documentation field stating that trust exceptions do not enforce OS-level execution or permission controls.
+RemediationAttempt
+- id.
+- findingId.
+- actionType.
+- startedAt, completedAt.
+- result: LaunchedSettings / UserCancelled / Completed / Failed / AwaitingVerification.
+- details.
+AuditEvent
+- id.
+- eventType.
+- source: PlatformObservation / UserAction / RuleEvaluation / Import.
+- relatedEntityId.
+- timestamp.
+- summary.
+Store only what the product needs. Avoid raw clipboard data, network payloads, document contents, personal messages, full process command lines, or full paths unless a user explicitly selects and needs them for a file operation. Use platform-protected key storage (Android Keystore on Android; Windows DPAPI or another supported OS-protected key mechanism on Windows) for local encryption keys. Keep Windows and Android histories local unless the user explicitly exports or pairs devices.
+9. Cross-platform privacy and security requirements
+Privacy should be an architectural property, not just a marketing sentence.
+MVP privacy commitments
+- No account required.
+- No cloud backend, ads, or analytics SDK in the core product.
+- No upload of app inventories, permissions, process names, file paths, hashes, connection metadata, or audit history.
+- No network connection from core audit flows unless a clearly documented feature requires it.
+- No collection of message content, passwords, clipboard contents, microphone audio, camera media, or network payloads.
+- No hidden background monitoring or remote command channel.
+- Clear data-retention, export, and delete-history controls on both clients.
+Local data protection
+- Android: use Android Keystore-backed key management for sensitive local audit data; review Room encryption and Android Auto Backup/device-transfer behaviour.
+- Windows: protect local encryption keys using Windows DPAPI or another supported OS-protected key mechanism; do not store encryption keys in plaintext configuration files.
+- Do not silently back up sensitive audit history into cloud backup. Make backup/export explicit, encrypted, and user-controlled.
+- Redact file paths, user names, process command lines, and package inventories in exported reports by default; allow explicit opt-in for fuller details.
+- Avoid logging sensitive inventory/evidence to Logcat, console output, or Windows event logs in release builds.
+- Keep dependencies minimal, pinned, and reviewed. Produce a dependency inventory/SBOM for releases.
+- Make the privacy policy match the actual code, permissions, telemetry, and retention behaviour on both platforms.
+Permission and elevation strategy
+- Android: request the minimum runtime permissions and special access; explain each before sending users to Settings. Do not request all-files access just to appear powerful. Ask for VPN consent only when the user enables that feature.
+- Windows: run as a standard user. Request UAC elevation only for a named, bounded action that cannot be completed without it. Do not install an always-on elevated service in the MVP.
+- Both: access denial or revocation must produce a clear NEEDS_USER_ACCESS or NOT_OBSERVABLE status, never a green result.
+Trust and safety guardrails
+- No silent deletion, uninstall, permission changes, process termination, firewall changes, service changes, registry edits, or blocking.
+- No hidden VPN activation.
+- No automatic trust of a tool based on display name or path alone.
+- No false positive presented as confirmed malware.
+- Every high-severity alert must expose its evidence, confidence, source, rule version, and limitation.
+- Trust exceptions do not grant operating-system permissions, isolate processes, or enforce execution control.
+- AegisCore must coexist with Microsoft Defender and Android's built-in protections; it must never ask users to disable them as a normal setup step.
+10. Cross-platform development roadmap
+Phase 0 — Verify both platforms before committing to the architecture
+Objective: Prove data collection on the actual Windows laptop and Android device. Produce two capability matrices, not a mock UI.
+Windows feasibility spike
+1. Record Windows edition, build, architecture, and whether the device is enrolled in applicable security updates.
+2. Enumerate registered Win32 software and Appx/MSIX packages using separate sources; compare output with Windows Settings' installed-app list and document gaps.
+3. Query Defender status read-only and confirm behaviour when Defender is passive or another security provider is installed.
+4. Query Windows Firewall profile status without changing it.
+5. Snapshot TCP connections and map owning process IDs; test standard-user and elevated behaviour.
+6. Enumerate Run/RunOnce and Startup folder entries; add service/task inventory only after permissions and false-positive review.
+7. Inspect Authenticode signatures and calculate SHA-256 for user-selected test executables without executing them.
+8. Hash a user-selected test folder and compare a second snapshot.
+9. Confirm which OS-posture fields require elevation, are unavailable, or vary by Windows build.
+10. Confirm no outbound data transmission from the core audit prototype.
+Android feasibility spike
+1. Query visible installed packages using PackageManager.
+2. Compare results with the intended package-visibility declarations on Android 11+.
+3. Retrieve requested/granted permission data for a test set.
+4. Retrieve signing-certificate digests and basic package metadata.
+5. Inspect exported-component metadata where available.
+6. Test security patch and secure lock-screen signals.
+7. Test SAF access to a selected folder and APK.
+8. Confirm what is unavailable on a non-rooted device.
+9. Review Play policy implications for package visibility before selecting the distribution path.
+Exit criteria: A written, evidence-backed Windows and Android API capability matrix; tests on the user's actual devices plus at least one additional OS/device environment where practical; no core feature relies on undocumented APIs, hidden interfaces, root, or kernel drivers.
+Phase 1 — Windows Security Auditor MVP (primary build)
+Build:
+- Desktop onboarding explaining read-only scope, local storage, Defender coexistence, and limitations.
+- Overview showing assessment status, scan coverage, priority findings, and last audit.
+- Win32 + Appx/MSIX software inventory with source labels and visible inventory limitations.
+- Publisher/signature metadata and change detection for installed software.
+- Startup entry review using supported registry and Startup-folder sources.
+- Read-only Defender and firewall posture checks.
+- Point-in-time TCP connection snapshot mapped to process IDs.
+- Selected-file SHA-256 and Authenticode inspection.
+- Evidence-backed findings with severity, confidence, and rule version.
+- Local SQLite history, scoped trust annotations, and sanitized report export.
+- Settings shortcuts and guided remediation; no silent system changes.
+Do not build:
+- Persistent elevated Windows service.
+- Kernel driver or WFP callout driver.
+- Full packet capture or TLS interception.
+- Automatic process termination, firewall blocking, service disabling, or registry cleanup.
+- “Antivirus replacement” or malware-clean claims.
+Phase 1 acceptance criteria
+- Works as a standard user for all features that do not require elevation.
+- Each collector reports completed / partial / unavailable / needs elevation / failed accurately.
+- App inventory sources and known gaps are visible.
+- Active TCP connections show observation time and owning PID resolution status.
+- Defender and firewall checks are read-only.
+- Selected files are never executed.
+- No outbound transmission of audit data.
+- A follow-up scan can verify changes.
+Phase 1.1 — Windows Executable Preflight and File Integrity
+Build:
+- Selected EXE/DLL/MSI/MSIX inspection and optional APK preflight on the Windows laptop.
+- SHA-256, PE metadata, Authenticode status for supported Windows formats, signer, version, and manifest parsing where supported. Verify MSIX package signatures using package-aware verification rather than assuming every format uses the same signature path.
+- For APKs, use a maintained APK manifest/signature parser with bounded ZIP handling; never roll a custom APK signing verifier without a dedicated security review.
+- Selected-folder baseline and change comparison.
+- Safe bounded parsers for malformed, oversized, and unsupported files.
+Acceptance criteria:
+- Never execute a selected file.
+- Parse archives with strict file-count, expanded-size, compression-ratio, path, CPU-time, and memory limits; do not blindly extract untrusted archives.
+- Signature validity is not described as a safety guarantee.
+- Parsing failure returns UNSUPPORTED or ERROR, never “clean.”
+- No file content or hashes are uploaded.
+Phase 2 — Android Security Auditor
+Build the Android scope described in Sections 3 and 4:
+- Onboarding and capability education.
+- Dashboard with assessment coverage and honest status language.
+- Installed-app inventory and requested-versus-granted permission analysis.
+- Supported exported-component checks.
+- Limited device posture checks.
+- Deterministic, versioned rule engine.
+- Evidence-backed findings and details.
+- Local Room history and scoped trust annotations.
+- Settings shortcuts and user-confirmed uninstall flow.
+- Sanitized JSON/text export.
+Android acceptance criteria remain the detailed criteria in the Android sections below and the Verification section. In particular, a package that is invisible must not be treated as absent, and an unavailable signal must not be presented as a pass.
+Phase 2.1 — Android APK Preflight and File Inspector
+Build the selected APK/SAF workflows detailed in Section 4. Never execute selected files or label an unscanned APK clean.
+Phase 3 — Optional encrypted local device pairing
+Start with manual export/import of signed report files. If users need live pairing, add:
+- One-time authenticated QR pairing.
+- Device public-key identity and revocation.
+- Encrypted local-network transport.
+- User-selected summary sync only.
+- Independent per-device scan timestamps and coverage.
+- No remote execution or remote remediation.
+Acceptance criteria: pairing cannot silently expose data; revocation invalidates the relationship; exported/imported reports are schema-versioned and integrity-checked; no cloud relay is required for MVP pairing.
+Phase 4 — Advanced monitoring (separate platform tracks)
+Windows: evaluate ETW for telemetry and WFP only after a dedicated threat model, user-consent design, performance testing, and code-signing/driver review. Keep enforcement out of scope until a separately justified release. No WFP kernel callout driver as a shortcut.
+
+Android: add historical NetworkStatsManager usage and optional VpnService metadata collection only after clear consent, foreground notification, battery testing, conflict handling, and data-minimization review.
+
+Do not label periodic snapshots or usage buckets as real-time monitoring.
+Phase 5 — Developer Security Workspace
+Build:
+- Developer-tool profiles on both platforms.
+- File/package identity bound to hash and signing identity, not display name alone.
+- Scoped, expiring risk annotations.
+- Explicit integrations with supported developer tools that emit their own events.
+- Import of user-selected local logs.
+- Explain capability footprint and potential blast radius without claiming AegisCore can enforce a sandbox.
+Optional future enterprise track: separately assess managed Windows and Android deployments, policy enforcement, administrative consent, device-owner/MDM capabilities, and legal/privacy obligations. Do not mix enterprise-only features into ordinary consumer promises.
+11. Cross-platform verification and quality plan
+Shared unit tests
+- Severity, confidence, and status calculations.
+- Rule schema validation and rule-version migration.
+- Snapshot comparison and change detection.
+- Trust exception scoping and expiry.
+- Coverage calculations and unknown/unavailable handling.
+- Finding lifecycle and resolution transitions.
+- Export sanitization and schema compatibility.
+- Platform-specific rule dispatch: a Windows rule must never run on Android data and vice versa.
+Windows integration tests
+- Standard-user inventory versus elevated inventory.
+- Win32 uninstall-registration inventory and Appx/MSIX inventory with known test packages.
+- Missing/unregistered portable apps are not treated as proof of absence.
+- Defender active/passive/disabled/unavailable states.
+- Firewall on/off/profile query and no unintended configuration changes.
+- TCP connection snapshots with known processes, stale PIDs, PID reuse, and inaccessible process metadata.
+- Run/RunOnce and Startup folder entries, missing targets, quoted paths, environment variables, and duplicate entries.
+- Services/tasks with access denied and malformed command paths.
+- Authenticode signed, unsigned, expired, untrusted, and tampered test files.
+- Large, malformed, reparse-point, inaccessible, and changing files/folders.
+- UAC cancellation and user refusal.
+- OS builds and supported/unsupported lifecycle states.
+Android integration tests
+- Package visibility on Android 11+.
+- Multiple API levels and OEM variations.
+- Apps with no dangerous permissions, many permissions, special permissions, and signature permissions.
+- Exported components with and without permission protection.
+- App uninstall/update/reinstall and signing lineage changes.
+- Missing, denied, revoked, and partially granted special access.
+- SAF-selected files, revoked URI grants, unreadable files, and large files.
+- Notification permission denied and battery restrictions.
+- VPN consent granted, denied, revoked, and another VPN already active (when Phase 4 exists).
+Shared negative tests — mandatory
+- A package/app that is not visible or not registered must not be treated as definitely absent.
+- A permission/capability that cannot be queried must not be treated as denied or safe.
+- A collector exception or timeout must not produce a green result.
+- An unknown signer is not automatically malware.
+- A valid signature is not proof that an executable is harmless.
+- A root heuristic must not produce “root confirmed.”
+- An enabled accessibility service must not automatically be labelled malicious.
+- High network usage or an open TCP port alone must not be labelled exfiltration or malware.
+- A trust exception must not erase the underlying finding or change OS behaviour.
+- A failed APK/EXE parse must not produce “file is clean.”
+- A partial scan must never show 100% coverage.
+Device and OS test matrix
+- The user's actual Windows laptop and Android device are mandatory test targets.
+- Windows: supported Windows 11 builds first; test Windows 10 only if the product explicitly commits to a defined edition/build/ESU matrix.
+- Android: selected minimum API, Android 11+ package visibility/storage behaviour, and current stable release at ship time.
+- Include standard-user/standard-app runs and separately labelled elevated/special-access runs.
+- Use physical devices as well as emulators/VMs.
+Release gates
+Do not call the product production-ready merely because it compiles. Require:
+- Real-device/real-OS test results for both platforms.
+- No unexpected outbound network traffic.
+- Least-privilege and UAC/special-access review.
+- Safe file parsing and path-handling review.
+- Privacy, encryption, backup, and export audit.
+- Battery/performance and startup impact measurement.
+- Accessibility review.
+- Reproducible signed release builds and dependency inventory.
+- Clear platform limitations and user-facing documentation.
+12. Product success metrics
+Measure trust and usefulness across Windows and Android rather than the number of scary alerts.
+- Percentage of applicable checks completed successfully.
+- Percentage of findings with complete evidence and a useful explanation.
+- User-rated helpfulness of findings.
+- False-positive rate from reviewed findings.
+- Percentage of remediation flows that reach a verified result.
+- Time to complete a normal audit on supported Windows and Android device classes.
+- CPU, memory, battery, and Windows startup impact.
+- Number of users who understand platform-specific distinctions: requested/granted/active permissions on Android, and packaged capabilities versus traditional desktop app behaviour on Windows.
+- Zero unexpected network transmissions from the core audit flow.
+Do not optimise for maximum detections. Optimise for accurate, explainable, actionable findings.
+13. Original-plan changes — direct review
+Original plan element	Decision	Why
+All-vector deep scan on launch	Reduce to a capability-aware audit	Several vectors are not exposed to standard apps.
+Real-time proactive alerts for arbitrary access attempts	Defer and narrow	Only alert on events AegisCore can actually observe.
+Filesystem walk across internal/system paths	Replace with user-selected file/folder scanning: Windows file picker and Android SAF	Other app private directories and protected system paths are not generally accessible.
+Global socket and network leak inspection	Start with process-mapped TCP snapshots on Windows; use optional VPN metadata and coarse usage stats on Android	Neither platform grants a normal app universal visibility into all traffic; deeper telemetry is a separate project.
+Detect rapid clipboard snooping and stealth recording	Remove as generic claims	The app cannot reliably observe arbitrary apps performing these actions.
+Zero-day anomaly patterns	Replace with explainable heuristics	Generic heuristics cannot establish zero-day detection.
+Trust Manager allowlisting	Replace with scoped risk annotations	A regular app cannot enforce execution policy on other apps.
+One-tap terminate app / delete arbitrary file	Replace with Settings, uninstall prompt, and selected-file actions	Platform permissions restrict cross-app control.
+Security score 94/100	Replace with risk + coverage + confidence	A single score hides blind spots and can create false reassurance.
+“System clean and verified”	Replace with “No high-priority findings in inspected areas”	Absence of findings is not proof of complete security.
+One Room database for all clients	Use Room on Android and SQLite on Windows with shared versioned export contracts	The clients are native apps with separate local stores; privacy does not require a cloud backend.
+Basic Robolectric tests	Expand to real-device and negative tests	Android restrictions and OEM behaviour require integration testing.
+Android-only architecture	Replace with native Windows + native Android clients and common contracts	The user's laptop is the first build target; OS security models and APIs differ.
+No Windows software inventory	Add Win32 + Appx/MSIX inventory with coverage labels	Windows software installation is not represented by one universal package list.
+Universal Windows app permission score	Do not add	Traditional Win32 desktop apps do not use the same per-app privacy permission model as Store apps.
+Generic real-time socket inspection	Start with process-mapped TCP snapshots on Windows; keep Android network monitoring opt-in	A snapshot is not continuous telemetry; WFP/VPN monitoring are separate advanced features.
+Replace Microsoft Defender	Explicitly do not replace or disable it	AegisCore should read supported status and complement built-in protection.
+Always-on elevated service	Keep out of MVP	A standard-user desktop audit with bounded UAC elevation is safer and easier to validate.
+Cloud-based device dashboard	Defer; use manual export/import then optional local encrypted pairing	Preserves privacy and avoids unnecessary backend complexity.
+
+
+14. Final recommendation: the next smallest task
+Start with Phase 0 on both actual devices, then implement the Windows desktop MVP first. This respects the fact that the laptop is the primary development target while keeping the Android app in the architecture from day one.
+
+The first deliverable should be two short diagnostic prototypes and a comparison table:
+1. Windows: prove installed-software inventory, Defender status, firewall posture, startup discovery, TCP connection-to-process mapping, and selected executable signature/hash inspection. Also test whether the laptop can safely preflight a user-selected APK without executing it.
+2. Android: prove package visibility, requested/granted permissions, signing identity, exported-component metadata, device posture, and user-selected APK access.
+3. Shared: define the common evidence, finding, coverage, trust-exception, and report schemas.
+4. Privacy: verify that neither prototype uploads audit data and that access denial produces an explicit unavailable/partial result.
+Do not begin with a polished dashboard or background sentinel. First prove the collectors on your own Windows laptop and Android phone. Once the Windows capability matrix is solid, build the desktop UI around real findings; then deliver the Android client using the same product language and common report contracts.
+
+The long-term vision: one privacy-first security product across your laptop and phone, with native understanding of each operating system, truthful evidence, clear limitations, and optional local pairing—not a fake universal antivirus that claims powers it does not have.
+15. Key official platform references
+Android
+- Android Application Sandbox
+- Package visibility
+- Android storage privacy changes
+- NetworkStatsManager API
+- Android VPN guide
+- VpnService API
+- ActivityManager API
+Windows
+- Get-AppxPackage
+- Windows desktop apps and privacy
+- Manage desktop app privacy access
+- Get-NetTCPConnection
+- Windows Filtering Platform
+- Microsoft Defender Antivirus in Windows
+- Windows Firewall tools
+- Run and RunOnce registry keys
+- Windows 10 support has ended

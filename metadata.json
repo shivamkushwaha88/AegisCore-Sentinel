@@ -1,0 +1,6 @@
+{
+  "name": "AegisCore Sentinel",
+  "description": "Privacy-first on-device security transparency auditor, permission inspector, and APK preflight with evidence-backed findings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
